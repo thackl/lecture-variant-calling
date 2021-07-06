@@ -6,20 +6,19 @@ containing the genome in FASTA format from NCBI
 https://www.ncbi.nlm.nih.gov/assembly/GCA_008330645.1/
 
 #+begin_src sh
-mkdir genome && cd genome
 wget -O BVI.tar https://www.ncbi.nlm.nih.gov/projects/r_gencoll/ftp_service/nph-gc-ftp-service.cgi/?HistoryId=MCID_60dfdfa5ccd4273699521e5b&QueryKey=2&ReleaseType=GenBank&FileType=GENOME_FASTA&Flat=true
 # uncompress file
 tar -xf BVI.tar
 # place uncompressed FASTA file at top directory for easy access
-gzip -cd ncbi-genomes-2021-07-03/GCA_008330645.1_CrBVI_genomic.fna.gz > ../BVI.fna
-cd ..
+gzip -cd *ncbi-genomes-2021-07-03/GCA_008330645.1_CrBVI_genomic.fna.gz > BVI.fna
+# remove temporary files
+rm -r ncbi-genomes* 
 #+end_src
 
 Download paired-end sequencing data - Cafeteria roenbergensis strain RCC970 - in
 FASTQ format from NCBI - https://www.ncbi.nlm.nih.gov/sra/SRX6482057[accn]. 
 
 #+begin_src sh
-mkdir reads && cd reads
 fastq-dump --split-e SRR9724623
 # Read 6619536 spots for SRR9724623
 # Written 6619536 spots for SRR9724623
@@ -31,8 +30,9 @@ results are summarized in fastp.html.
 
 #+begin_src sh
 fastp -w 60 --cut_right -i SRR9724623_1.fastq -I SRR9724623_2.fastq -o RCC_1.fq -O RCC_2.fq
-cd ..
 #+end_src
+
+[[file:fastp.png]]
 
 ** Map reads
 Map each read pair to the optimal location on the reference assembly with `bwa
@@ -41,16 +41,19 @@ machine.
 
 #+begin_src sh
 bwa index BVI.fna
-bwa mem -t 60 BVI.fna reads/RCC_1.fq reads/RCC_2.fq |
-  samtools view -ub | samtools sort -@ 60 -m 15G -o BVI-RCC.bam /dev/fd/0
+bwa mem -t 60 BVI.fna RCC_1.fq RCC_2.fq > BVI-RCC.sam
+samtools view -ub BVI-RCC.sam | samtools sort -@ 60 -m 15G -o BVI-RCC.bam /dev/fd/0
 #+end_src
 
-We are foregoing PCR-duplicates marking and removal because a) we used a
-protocol with highly reduced PCR-cycles and b) Ebbert et al. (2016)
-BMC Bioinformatics, which show that PCR-dedup has no effect of variant calls.
+We are foregoing PCR-duplicates marking and removal because 
+a) we used a protocol with highly reduced PCR-cycles and 
+b) Ebbert et al. (2016) BMC Bioinformatics showing that PCR-dedup has no effect
+   of variant calls.
 
-** Call variants
+** Call & filter variants
 
 #+begin_src sh
 freebayes -f BVI.fna BVI-RCC.bam > BVI-RCC.vcf
+bcftools filter --include 'QUAL>20 & INFO/DP>30 & INFO/DP < 150' BVI-RCC.vcf >BVI-RCC-filtered.vcf
 #+end_src
+
